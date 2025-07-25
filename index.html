@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>WhatsApp 聊天记录查看</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <style>
+    body {
+      background: linear-gradient(120deg, #dbeafe 0%, #e0e7ef 55%, #f8fafc 100%);
+      min-height: 100vh;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+    }
+    .header-banner {
+      background: linear-gradient(90deg,#60a5fa 15%, #38bdf8 60%, #7c3aed 100%);
+      animation: dropDown 0.7s cubic-bezier(.17,.67,.59,1.1);
+      box-shadow: 0 4px 24px #64748b15;
+    }
+    @keyframes dropDown {
+      from {transform:translateY(-50px); opacity:0;}
+      to {transform:translateY(0); opacity:1;}
+    }
+    .main-shell {
+      box-shadow: 0 8px 32px #38bdf82c;
+      border-radius: 30px;
+      background: rgba(255,255,255,0.86);
+      backdrop-filter: blur(6px);
+      animation: fadeInUp 0.65s cubic-bezier(.15,.65,.47,1.09);
+    }
+    @keyframes fadeInUp {
+      from { transform: translateY(50px); opacity: 0;}
+      to { transform: translateY(0); opacity: 1;}
+    }
+    .sidebar {
+      min-width: 230px;
+      border-right: 2px solid #e5e7eb;
+      background: #f7fafcBB;
+      padding-top: 35px;
+      border-radius: 28px 0 0 28px;
+      box-shadow: 4px 0 14px #a5b4fc10;
+      transition: background 0.2s;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+    }
+    .sidebar h3 { font-size: 1.08rem; color: #2563eb; margin-bottom: 25px; letter-spacing: 1px;}
+    .sidebar button, .sidebar label[for="zipInput"] {
+      background: linear-gradient(90deg,#38bdf8,#6366f1 75%);
+      color: white; font-weight: 700;
+      border-radius: 14px;
+      padding: 12px 0;
+      margin-bottom: 10px;
+      font-size: 1.08rem;
+      box-shadow: 0 2px 8px #0ea5e940;
+      transition: 0.19s;
+      position: relative;
+      overflow: hidden;
+      outline: none;
+      width: 100%;
+      display: block;
+      text-align: center;
+      cursor: pointer;
+    }
+    .sidebar button:active, .sidebar label[for="zipInput"]:active {
+      filter: brightness(1.05);
+      transform: scale(.99);
+    }
+    .sidebar button:hover, .sidebar label[for="zipInput"]:hover {
+      filter: brightness(1.10);
+      box-shadow: 0 6px 18px #38bdf840;
+      letter-spacing: 1.5px;
+      transform: translateY(-1px) scale(1.04);
+    }
+    .main-content {
+      flex: 1;
+      padding: 36px 20px 22px 20px;
+      min-width: 0;
+      background: none;
+      border-radius: 0 28px 28px 0;
+    }
+    @keyframes bubbleIn {
+      from { transform: scale(.9) translateY(50px); opacity: 0; }
+      to   { transform: scale(1) translateY(0); opacity: 1; }
+    }
+    .chat-bubble-self {
+      background: linear-gradient(95deg,#bbf7d0 70%,#f0fdfa 100%);
+      border-radius: 16px 18px 0 18px;
+      animation: bubbleIn 0.5s;
+    }
+    .chat-bubble-other {
+      background: linear-gradient(98deg,#f7f7f9 70%,#f0f0ff 100%);
+      border-radius: 18px 18px 18px 0;
+      box-shadow: 0 1.5px 3.5px rgba(59,130,246,.10);
+      animation: bubbleIn 0.5s;
+    }
+    .avatar {
+      width: 38px; height: 38px; border-radius: 50%;
+      background: linear-gradient(120deg,#c7d2fe 60%, #bae6fd 100%);
+      font-size: 17px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 2px 8px #94a3b820;
+      border: 2px solid #fff;
+      letter-spacing: 2px;
+    }
+    #chat::-webkit-scrollbar { width: 7px; }
+    #chat::-webkit-scrollbar-thumb { background: #c7d2fe; border-radius: 10px; }
+    #log-container {
+      display: none;
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: #f1f5f9ef;
+      padding: 14px 28px; max-height: 220px; overflow-y: auto;
+      border-top: 1.5px solid #e0e7ef;
+      z-index: 40;
+      font-size: 14px;
+      border-radius: 18px 18px 0 0;
+      box-shadow: 0 -2px 18px #64748b17;
+      animation: fadeInUp .36s cubic-bezier(.22,.6,.55,1);
+    }
+    #toggle-log {
+      position: fixed; bottom: 30px; right: 30px;
+      background: linear-gradient(90deg,#38bdf8,#6366f1 90%);
+      color: white; border-radius: 50%; width: 50px; height: 50px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 24px;
+      box-shadow: 0 6px 22px #0ea5e97b;
+      z-index: 50;
+      transition: 0.18s;
+    }
+    #toggle-log:hover { filter: brightness(1.14); }
+    #searchInput {
+      border: 1.7px solid #cbd5e1;
+      border-radius: 12px; padding: 13px 14px;
+      width: 100%; margin-bottom: 18px;
+      font-size: 1.04rem; box-sizing: border-box;
+      transition: border 0.2s;
+      background: #f9fafb;
+    }
+    #searchInput:focus { border-color:#38bdf8; outline: none;}
+    /* 日历弹窗更宽适配 */
+    .calendar-modal, .images-modal, .bigimg-modal {
+      position: fixed; z-index: 99;
+      inset: 0;
+      background: rgba(0,0,0,0.28);
+      display: flex; align-items: center; justify-content: center;
+      visibility: hidden; opacity: 0; pointer-events: none;
+      transition: opacity .27s, visibility .2s;
+    }
+    .calendar-modal.show, .images-modal.show, .bigimg-modal.show {
+      visibility: visible; opacity: 1; pointer-events: auto;
+      transition: opacity .33s cubic-bezier(.3,.6,.5,1), visibility .2s;
+    }
+    .calendar-content {
+  background: linear-gradient(145deg, #f8fafc, #e2e8f0);
+  border-radius: 28px;
+  padding: 32px 36px 26px 36px;
+  max-width: 440px;
+  min-width: 320px;
+  width: 96vw;
+  box-shadow: 0 14px 60px rgba(59,130,246,0.25);
+  animation: calPop 0.33s cubic-bezier(.1,.82,.43,1.1);
+  font-size: 17px;
+  border: 1px solid #cbd5e1;
+  position: relative;
+}
+    .calendar-table th, .calendar-table td { font-size:19px; }
+    @media (max-width:800px) {
+      .calendar-content {max-width:99vw; min-width:0; padding:16px 2vw 12px 2vw;}
+    }
+    @keyframes calPop {
+      from {transform: scale(.87) translateY(24px); opacity:0;}
+      to   {transform: scale(1) translateY(0); opacity:1;}
+    }
+    .calendar-content h4 { margin-bottom: 18px; text-align: center; font-weight: bold; font-size:1.3rem;}
+    .calendar-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 16px;
+  table-layout: fixed;
+}
+
+.calendar-table th, .calendar-table td {
+  padding: 10px 0;
+  text-align: center;
+  color: #475569;
+}
+
+.calendar-table th {
+  font-weight: 600;
+  font-size: 15px;
+  color: #3b82f6;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.calendar-day {
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 600;
+  color: #1e3a8a;
+  padding: 8px 0;
+  border: 1.5px solid transparent;
+}
+
+.calendar-day.has-msg {
+  background: #f0f9ff;
+  color: #2563eb;
+  border-color: #bae6fd;
+}
+
+.calendar-day.selected {
+  background: #3b82f6;
+  color: #fff;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
+}
+
+.calendar-day:hover {
+  background: #dbeafe;
+  color: #1e3a8a;
+  transform: scale(1.05);
+}
+
+.cal-btn-big {
+  font-size: 1.4rem; /* 增大字体，便于点击 */
+  width: 10px; /* 更大按钮尺寸 */
+  height: 42px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6, #60a5fa);
+  color: white;
+  border: none;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(59,130,246,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.18s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.cal-btn-big:hover {
+  background: linear-gradient(135deg, #2563eb, #3b82f6);
+  transform: scale(1.2);
+  box-shadow: 0 8px 24px rgba(59,130,246,0.4);
+}
+
+.cal-btn-big:active {
+  transform: scale(0.9);
+  box-shadow: 0 3px 10px rgba(59,130,246,0.25);
+}
+/* 月份标题文本样式 */
+.calendar-month-display {
+  min-width: 120px;
+  text-align: center;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #2563eb;
+  letter-spacing: 0.5px;
+}
+.cal-btn-big:hover {
+  background: linear-gradient(135deg, #2563eb, #3b82f6);
+  transform: scale(1.08);
+}
+.cal-btn-big:hover {
+  background: linear-gradient(135deg, #2563eb, #3b82f6);
+  transform: scale(1.12);
+  box-shadow: 0 6px 22px rgba(59,130,246,0.35);
+}
+.cal-btn-big:hover {
+  background: #60a5fa;
+  color: white;
+  transform: scale(1.1);
+}
+    /* 所有图片弹窗-更大更美观 */
+    .images-modal { z-index: 999; }
+    .images-panel {
+  background:#fff;
+  border-radius:28px;
+  box-shadow:0 14px 48px #1e40af22;
+  max-width:96vw; width:660px;
+  /* 删除 max-height 和 overflow 这两行 */
+  padding:28px 28px 18px 28px;
+  animation: calPop .31s;
+  position:relative;
+  display: flex; flex-direction: column;
+  gap: 6px;
+}
+    .images-panel-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .images-panel-title {
+      font-size:1.13rem;
+      font-weight:700;
+      color:#2563eb;
+      letter-spacing:1.1px;
+    }
+    .images-panel .close-btn {
+      font-size:32px;color:#555;cursor:pointer;
+      background:none;border:none;outline:none;z-index:3;
+      margin-left:8px;
+    }
+    .images-panel-main {
+  flex:1;
+  min-height:80px;
+  max-height:62vh;  /* 新增，适应窗口高度，必要时可以调整 */
+  overflow-y: auto; /* 新增，让滚动条只出现在图片区域 */
+  padding-bottom: 5px;
+}
+    .images-grid {
+      display:grid;
+      grid-template-columns:repeat(auto-fill,minmax(100px,1fr));
+      gap:17px;
+      padding-bottom:3px;
+      justify-content:center;
+      align-items:flex-start;
+      margin:0 auto;
+    }
+    .img-thumb {
+      width:96px;height:96px;object-fit:cover;
+      border-radius:14px;
+      box-shadow:0 1.7px 8px #93c5fd1a;
+      cursor:pointer;transition:.17s; border:2.2px solid #fff;
+      background:#f1f5fa;
+      position:relative;
+    }
+    .img-thumb:hover { box-shadow:0 4px 22px #7c3aed36; transform:scale(1.10); z-index:2;}
+    .img-thumb.active {border:2.2px solid #6366f1;}
+    .img-thumb-wrap {
+      position:relative;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:3px;
+      background:rgba(243,244,246,0.85);
+      padding:5px 2px 6px 2px;
+      border-radius:13px;
+    }
+    .img-info, .img-info2 {
+      text-align:center;
+      font-size:13px;
+      color:#64748b;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      max-width:92px;
+      margin-top:1px;
+      line-height:1.2;
+    }
+    .img-info2 {color:#3b82f6;font-size:12px;}
+    /* 大图弹窗更大 */
+    .bigimg-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .3s ease, visibility .3s ease;
+  z-index: 1002;
+}
+
+.bigimg-modal.show {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.bigimg-panel {
+  position: relative;
+  max-width: 90vw;
+  max-height: 90vh;
+  padding: 12px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 8px 36px rgba(0,0,0,0.4);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: zoomIn .35s cubic-bezier(.25,.8,.25,1);
+}
+
+@keyframes zoomIn {
+  from { transform: scale(0.7); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.bigimg-panel img {
+  max-width: 100%;
+  max-height: 70vh;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.bigimg-panel .close-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(0,0,0,0.4);
+  color: #fff;
+  border: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  cursor: pointer;
+  transition: background .2s ease, transform .1s ease;
+}
+
+.bigimg-panel .close-btn:hover {
+  background: rgba(0,0,0,0.6);
+  transform: scale(1.1);
+}
+
+.bigimg-title {
+  color: #374151;
+  font-size: 14px;
+  padding: 6px 12px;
+  background: rgba(243,244,246,0.9);
+  border-radius: 6px;
+  margin-bottom: 8px;
+  text-align: center;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+}
+
+.bigimg-panel .goto-btn {
+  padding: 8px 20px;
+  border-radius: 8px;
+  background: linear-gradient(90deg,#38bdf8,#6366f1);
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 8px rgba(14,165,233,.3);
+  transition: transform .15s, background .2s ease;
+}
+
+.bigimg-panel .goto-btn:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.1);
+}
+
+.bigimg-panel .nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(0,0,0,0.4);
+  color: #fff;
+  border: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 20px;
+  cursor: pointer;
+  transition: background .2s ease, transform .1s ease;
+}
+
+.bigimg-panel .nav-btn:hover {
+  background: rgba(0,0,0,0.6);
+  transform: scale(1.1);
+}
+
+.bigimg-panel .nav-left { left: 10px; }
+.bigimg-panel .nav-right { right: 10px; }
+    .chat-bubble-highlight {
+      box-shadow:0 0 0 3px #6366f1, 0 6px 22px #60a5fa13;
+      animation: highlight .7s;
+      transition:box-shadow .34s;
+    }
+    @keyframes highlight {
+      from {box-shadow:0 0 0 8px #fef08a77;}
+      to   {box-shadow:0 0 0 3px #6366f1;}
+    }
+    .date-header {
+      background: #eff6ff;
+      padding: 8px 12px;
+      border-radius: 8px;
+      margin: 12px 0 6px 0;
+      font-weight: bold;
+      color: #2563eb;
+      text-align: center;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .date-header.highlighted {
+      background: #dbeafe;
+      animation: highlight-date 1s ease;
+      box-shadow: 0 0 0 2px #3b82f6;
+    }
+    @keyframes highlight-date {
+      0% { background: #dbeafe; box-shadow: 0 0 0 8px rgba(59,130,246,0.3); }
+      100% { background: #eff6ff; box-shadow: 0 0 0 2px #3b82f6; }
+    }
+    @media (max-width:800px){
+      .main-shell { box-shadow: none; }
+      .calendar-content,.images-panel{max-width:99vw; min-width:0; padding:13px 2vw 6px 2vw;}
+      .bigimg-panel img{max-width:97vw;max-height:72vh;}
+      .images-panel{padding-top:16px;}
+      .bigimg-panel{padding-bottom:15px;}
+      .sidebar {min-width: 0; width:100%;}
+    }
+    @media (prefers-color-scheme: dark) {
+      body {background: linear-gradient(120deg,#181f34 0%, #29354e 80%, #111927 100%);}
+      .main-shell {background:rgba(26,26,32,0.93);}
+      .sidebar {background:#23293B;}
+      .main-content {background:none;}
+      .header-banner {background: linear-gradient(90deg,#2563eb 20%,#38bdf8 85%,#6d28d9 100%);}
+      #searchInput {background:#20263b; color:#fff;}
+      #chat {background:#171d2b;}
+      .chat-bubble-other {background:linear-gradient(98deg,#232c40 70%,#27344a 100%);}
+      .chat-bubble-self {background:linear-gradient(95deg,#12b981 60%,#065f46 100%);}
+      .avatar {background:linear-gradient(120deg,#7c3aed 60%, #38bdf8 100%);}
+      .calendar-content, .images-panel{background:#23293b;}
+      .calendar-table th {color:#38bdf8;}
+      .calendar-day.active, .calendar-day.has-msg:hover {background:#222e41;color:#60a5fa;}
+      #log-container {background:#22293c;}
+      .bigimg-panel{background:#1a1a25;}
+      .date-header {
+        background: #1e293b;
+        color: #93c5fd;
+      }
+      .date-header.highlighted {
+        background: #1e3a8a;
+        box-shadow: 0 0 0 2px #3b82f6;
+      }
+      .images-panel-title {color:#38bdf8;}
+      .bigimg-title {color:#7dd3fc;}
+    }
+.images-panel-title {
+  font-size: 1.23rem !important;
+  font-weight: 700;
+  color: #2563eb;
+  letter-spacing: 1.2px;
+}
+#imgCount {
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #3b82f6;
+}
+.images-panel .close-btn {
+  font-size: 22px !important;
+  color: #555;
+  cursor: pointer;
+  background: none;
+  border: none;
+  outline: none;
+  z-index: 3;
+  margin-left: 8px;
+  transition: filter .14s, transform .14s;
+  line-height: 1;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.images-panel .close-btn:hover {
+  filter: brightness(1.14);
+  transform: scale(1.15);
+}
+.calendar-nav-wrapper {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 48px;
+}
+
+.calendar-month-display {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #2563eb;
+  text-align: center;
+  pointer-events: none;
+}
+  </style>
+</head>
+<body>
+  <header class="header-banner w-full py-4 mb-3 shadow-lg" style="border-radius:0 0 26px 26px;">
+    <h1 class="text-center text-white text-xl sm:text-2xl font-bold tracking-wider drop-shadow-lg select-none" style="letter-spacing:2.5px;">
+      WhatsApp 聊天记录查看
+    </h1>
+  </header>
+  <div class="max-w-5xl mx-auto my-4 px-1">
+    <div class="main-shell flex min-h-[90vh] bg-white/95">
+      <aside class="sidebar">
+        <h3 class="font-bold mb-3 tracking-wider">聊天日期筛选</h3>
+        <label for="zipInput" class="cursor-pointer">📂 导入聊天ZIP</label>
+        <input type="file" id="zipInput" accept=".zip" class="hidden"/>
+        <button id="switchBtn" class="hidden">切换视角</button>
+        <button id="openCalendar">📅 按日期查看</button>
+        <button id="openImages">🖼️ 所有图片</button>
+        <!-- 日历弹窗 -->
+        <div id="calendarModal" class="calendar-modal">
+          <div class="calendar-content relative">
+            <span class="calendar-close">&times;</span>
+            <h4>请选择聊天日期</h4>
+            <div id="calendarArea"></div>
+          </div>
+        </div>
+        <!-- 图片墙弹窗 -->
+        <div id="imagesModal" class="images-modal">
+          <div class="images-panel relative">
+            <div class="images-panel-header">
+              <span class="images-panel-title">所有聊天图片 (<span id="imgCount">0</span>)</span>
+              <button class="close-btn" title="关闭图片墙">&times;</button>
+            </div>
+            <div class="images-panel-main">
+              <div class="images-grid" id="imagesGrid"></div>
+            </div>
+          </div>
+        </div>
+        <!-- 大图弹窗 -->
+        <div id="bigimgModal" class="bigimg-modal">
+  <div class="bigimg-panel relative">
+    <button class="close-btn" title="关闭">&times;</button>
+    <div class="bigimg-title" id="bigimgTitle"></div>
+    <img id="bigimgPreview" src="" alt="图片预览"/>
+    <button class="goto-btn">定位到聊天</button>
+  </div>
+</div>
+      </aside>
+      <main class="main-content flex flex-col">
+        <input type="text" id="searchInput" placeholder="🔍 输入关键词，支持人名/内容..." class="mb-4" />
+        <div id="chat" class="space-y-5 max-h-[75vh] min-h-[280px] overflow-y-auto px-2 py-2 bg-white rounded-xl border border-gray-100 shadow-inner"></div>
+      </main>
+    </div>
+  </div>
+  <div id="log-container"><div id="log" class="text-xs text-gray-600"></div></div>
+  <div id="toggle-log" title="显示日志">📋</div>
+<script>
+/* ---- 工具函数和变量 ---- */
+function removeInvisible(str) {
+  return (str||'').replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u00A0]/g, '').replace(/^\s+|\s+$/g, '');
+}
+function parseMessageLine(line) {
+  line = removeInvisible(line);
+  const reg = /^\[?(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(上午|下午)?(\d{1,2}):(\d{2}):(\d{2})\]?\s*(.*?):\s*([\s\S]*)$/;
+  const m = line.match(reg);
+  if (!m) return null;
+  let hour = parseInt(m[3], 10);
+  if (m[2] === '下午' && hour < 12) hour += 12;
+  if (m[2] === '上午' && hour === 12) hour = 0;
+  let hourStr = hour < 10 ? '0' + hour : '' + hour;
+  let time = `${hourStr}:${m[4]}:${m[5]}`;
+  return {
+    date: m[1],
+    time: time,
+    author: removeInvisible(m[6]),
+    text: removeInvisible(m[7])
+  };
+}
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+}
+function extractAttachmentFilenames(text) {
+  const matches = [];
+  const reg = /<附件：\s*([^\s>]+\.(jpg|jpeg|png|gif|webp|bmp))\s*>/ig;
+  let clean = removeInvisible(text);
+  let m;
+  while ((m = reg.exec(clean))) {
+    matches.push(removeInvisible(m[1]));
+  }
+  return matches;
+}
+function norm(s) {
+  return removeInvisible(s||'').toLowerCase();
+}
+function normalizeDate(dateStr) {
+  const parts = dateStr.split('/');
+  let year = parts[2];
+  if (year.length === 2) {
+    year = '20' + year;
+  }
+  const day = parts[0].padStart(2, '0');
+  const month = parts[1].padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+function formatChineseDate(dateStr) {
+  const parts = dateStr.split('/');
+  let year = parts[2];
+  if (year.length === 2) {
+    year = '20' + year;
+  }
+  const day = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10);
+  return `${year}年${month}月${day}日`;
+}
+
+/* 全局状态变量 */
+let allImages = [];
+let lastBigImgIdx = null;
+let parsedLines = [];
+let imageMap = {};
+let userA, userB;
+let currentSelf = null;
+let selectedDate = null;
+let chatDateSet = new Set();
+let minDate = null, maxDate = null;
+
+/* 渲染聊天主窗口 */
+async function renderChat(filteredLines = parsedLines, highlightMsgIdx = null) {
+  if (!currentSelf) return;
+  let isSelfA = currentSelf === userA;
+  let selfUser = isSelfA ? userA : userB;
+  let otherUser = isSelfA ? userB : userA;
+
+  let htmls = [];
+  let lastDate = null;
+
+  for (let i=0;i<filteredLines.length;i++) {
+    let msg = filteredLines[i];
+    let isSelf = msg.author === selfUser;
+    let align = isSelf ? 'justify-end' : 'justify-start';
+    let bubble = isSelf ? 'chat-bubble-self' : 'chat-bubble-other';
+    let avatarHtml = `<div class="avatar flex items-center justify-center text-white font-bold">${escapeHtml((isSelf ? selfUser : otherUser)[0])}</div>`;
+    let content = '';
+
+    // 日期标题
+    const currentDate = normalizeDate(msg.date);
+    if (currentDate !== lastDate) {
+      htmls.push(`<div class="date-header" id="date-${currentDate}">${formatChineseDate(msg.date)}</div>`);
+      lastDate = currentDate;
+    }
+
+    let imgList = extractAttachmentFilenames(msg.text);
+    if (imgList.length > 0) {
+      for (let imgFilename of imgList) {
+        let zipEntry = imageMap[norm(imgFilename)];
+        if (zipEntry) {
+          content += `<img data-imgfn="${escapeHtml(norm(imgFilename))}" class="max-w-[200px] rounded-lg mb-2" alt="图片" src="">`;
+        } else {
+          content += `<div class="italic text-gray-400 text-sm">[图片未导出: ${escapeHtml(imgFilename)}]</div>`;
+        }
+      }
+    } else {
+      content = `<span class="text-gray-800">${escapeHtml(msg.text)}</span>`;
+    }
+
+    htmls.push(`
+      <div class="flex ${align} items-end gap-2" data-msg-idx="${i}">
+        ${isSelf ? '' : avatarHtml}
+        <div class="flex flex-col ${isSelf ? 'items-end' : 'items-start'} max-w-[70%]">
+          <div class="text-xs text-gray-500 mb-1">${msg.time}</div>
+          <div class="px-3 py-2 ${bubble} shadow-sm${highlightMsgIdx === i ? ' chat-bubble-highlight' : ''}">${content}</div>
+        </div>
+        ${isSelf ? avatarHtml : ''}
+      </div>
+    `);
+  }
+
+  document.getElementById('chat').innerHTML = htmls.join('');
+
+  // 赋值图片内容
+  let imgTags = document.getElementById('chat').querySelectorAll('img[data-imgfn]');
+  for (let img of imgTags) {
+    let imgFilename = img.getAttribute('data-imgfn');
+    let zipEntry = imageMap[imgFilename];
+    if (!zipEntry) continue;
+    let imgData = await zipEntry.async('base64');
+    let mime = imgFilename.endsWith('.jpg') || imgFilename.endsWith('.jpeg') ? 'image/jpeg' :
+               imgFilename.endsWith('.png') ? 'image/png' :
+               imgFilename.endsWith('.gif') ? 'image/gif' :
+               imgFilename.endsWith('.webp') ? 'image/webp' : 'image/*';
+    img.src = `data:${mime};base64,${imgData}`;
+  }
+
+  document.getElementById('chat').scrollTop = 0;
+}
+
+/* 渲染所有图片面板 */
+async function renderAllImagesPanel() {
+  let imagesGrid = document.getElementById('imagesGrid');
+  imagesGrid.innerHTML = '';
+  let imgCountSpan = document.getElementById('imgCount');
+  allImages = [];
+  for (let i=0;i<parsedLines.length;i++) {
+    let msg = parsedLines[i];
+    let imgList = extractAttachmentFilenames(msg.text);
+    for (let imgFilename of imgList) {
+      let zipEntry = imageMap[norm(imgFilename)];
+      if (zipEntry) {
+        let dataUrl = zipEntry._base64 || null;
+        if (!dataUrl) {
+          let imgData = await zipEntry.async('base64');
+          let mime = imgFilename.endsWith('.jpg') || imgFilename.endsWith('.jpeg') ? 'image/jpeg' :
+                     imgFilename.endsWith('.png') ? 'image/png' :
+                     imgFilename.endsWith('.gif') ? 'image/gif' :
+                     imgFilename.endsWith('.webp') ? 'image/webp' : 'image/*';
+          dataUrl = `data:${mime};base64,${imgData}`;
+          zipEntry._base64 = dataUrl;
+        }
+        allImages.push({
+          msgIndex: i,
+          imgName: imgFilename,
+          dataUrl,
+          date: msg.date,
+          time: msg.time,
+          author: msg.author,
+          text: msg.text
+        });
+      }
+    }
+  }
+  imgCountSpan.textContent = allImages.length;
+  if (allImages.length === 0) {
+    imagesGrid.innerHTML = `<div class="text-gray-400 text-center py-6 w-full col-span-full">未在聊天中检测到图片</div>`;
+    return;
+  }
+  for (let k=0;k<allImages.length;k++) {
+    const img = allImages[k];
+    let wrap = document.createElement('div');
+    wrap.className = 'img-thumb-wrap';
+    // 缩略图
+    let thumb = document.createElement('img');
+    thumb.className = 'img-thumb';
+    thumb.src = img.dataUrl;
+    thumb.alt = img.imgName;
+    thumb.title = `${img.author} ${img.time}`;
+    thumb.setAttribute('data-idx', k);
+    // 信息（两行：人名+时间、文件名）
+    let info1 = document.createElement('div');
+    info1.className = 'img-info';
+    info1.textContent = `${img.author} ${img.time}`;
+    let info2 = document.createElement('div');
+    info2.className = 'img-info2';
+    info2.textContent = img.imgName;
+    wrap.appendChild(thumb);
+    wrap.appendChild(info1);
+    wrap.appendChild(info2);
+    imagesGrid.appendChild(wrap);
+  }
+}
+
+/* 大图弹窗、定位 */
+function showBigImgModal(imgIdx) {
+  let bigimgModal = document.getElementById('bigimgModal');
+  let img = allImages[imgIdx];
+  if (!img) return;
+  let bigimg = document.getElementById('bigimgPreview');
+  bigimg.src = img.dataUrl;
+  let title = document.getElementById('bigimgTitle');
+  title.textContent = `${img.author} ${img.time}  |  ${img.imgName}`;
+  lastBigImgIdx = imgIdx;
+  bigimgModal.classList.add('show');
+}
+function scrollToMsgAndHighlight(msgIdx) {
+  let chatEl = document.getElementById('chat');
+  let msgDiv = chatEl.querySelector(`[data-msg-idx="${msgIdx}"]`);
+  if (msgDiv) {
+    msgDiv.scrollIntoView({behavior:'smooth',block:'center'});
+    let bubble = msgDiv.querySelector('.chat-bubble-self,.chat-bubble-other');
+    if (bubble) {
+      bubble.classList.add('chat-bubble-highlight');
+      setTimeout(()=>bubble.classList.remove('chat-bubble-highlight'),1500);
+    }
+  }
+}
+function scrollToDate(dateStr) {
+  const dateHeader = document.getElementById(`date-${dateStr}`);
+  if (dateHeader) {
+    dateHeader.classList.add('highlighted');
+    setTimeout(() => {
+      dateHeader.classList.remove('highlighted');
+    }, 1000);
+    dateHeader.scrollIntoView({behavior:'smooth',block:'start'});
+  }
+}
+
+/* 聊天记录、图片、切换、日历 相关绑定 */
+document.getElementById('zipInput').addEventListener('change', async (e) => {
+  let file = e.target.files[0];
+  if (!file) return;
+  let chat = document.getElementById('chat');
+  let log = document.getElementById('log');
+  let switchBtn = document.getElementById('switchBtn');
+  chat.innerHTML = '<div class="text-gray-400 text-center py-4">解析中...</div>';
+  log.innerText = '';
+  try {
+    let zip = await JSZip.loadAsync(file);
+    log.innerText += 'ZIP加载成功，共' + Object.keys(zip.files).length + '个文件。\n';
+
+    let txtFile = zip.file('_chat.txt');
+    if (!txtFile) {
+      chat.innerHTML = '<div class="text-red-500 text-center py-4">未找到聊天txt文件（_chat.txt）</div>';
+      log.innerText += '找不到 _chat.txt\n';
+      return;
+    }
+    let txt = await txtFile.async('string');
+    log.innerText += '_chat.txt加载成功，长度' + txt.length + '\n';
+
+    let lines = txt.split(/\r?\n/);
+    log.innerText += '共' + lines.length + '行\n';
+
+    imageMap = {};
+    zip.forEach((relativePath, zipEntry) => {
+      if (/\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(zipEntry.name)) {
+        let shortName = zipEntry.name.split('/').pop();
+        imageMap[norm(shortName)] = zipEntry;
+      }
+    });
+    log.innerText += '图片文件索引建立成功，共' + Object.keys(imageMap).length + '张图片\n';
+
+    let people = new Set();
+    parsedLines = [];
+    chatDateSet = new Set();
+    minDate = null; maxDate = null;
+    let unmatched = 0;
+    for (let i=0; i<lines.length; ++i) {
+      let msg = parseMessageLine(lines[i]);
+      if (msg) {
+        people.add(msg.author);
+        parsedLines.push(msg);
+        const nd = normalizeDate(msg.date);
+        chatDateSet.add(nd);
+        if (!minDate || nd < minDate) minDate = nd;
+        if (!maxDate || nd > maxDate) maxDate = nd;
+      } else {
+        unmatched++;
+      }
+    }
+    log.innerText += '消息解析完毕，检测到 ' + people.size + ' 个用户。未匹配行数：' + unmatched + '\n';
+    if (people.size < 2) {
+      chat.innerHTML = '<div class="text-red-500 text-center py-4">未检测到双方用户名（检测到用户：' + Array.from(people).join(', ') + '），或格式不兼容。请确认为双人对话。</div>';
+      return;
+    }
+    [userA, userB] = Array.from(people);
+    currentSelf = userA;
+    selectedDate = null;
+    await renderChat();
+    log.innerText += '消息渲染完毕，准备加载图片...\n';
+    log.innerText += '所有图片已加载完毕。';
+    switchBtn.classList.remove('hidden');
+  } catch (err) {
+    chat.innerHTML = '<div class="text-red-500 text-center py-4">解析失败: ' + escapeHtml(err.message) + '</div>';
+    log.innerText += '解析异常：' + err.message + '\n';
+    console.error(err);
+  }
+});
+
+document.getElementById('switchBtn').addEventListener('click', async () => {
+  currentSelf = currentSelf === userA ? userB : userA;
+  filterChat();
+});
+
+document.getElementById('toggle-log').addEventListener('click', () => {
+  let logContainer = document.getElementById('log-container');
+  logContainer.style.display = logContainer.style.display === 'block' ? 'none' : 'block';
+});
+
+document.getElementById('searchInput').addEventListener('input', filterChat);
+
+function filterChat() {
+  const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+  let filtered = parsedLines.filter(msg => {
+    let matchesSearch = msg.text.toLowerCase().includes(searchTerm) || msg.author.toLowerCase().includes(searchTerm);
+    let matchesDate = true;
+    if (selectedDate) {
+      const msgDate = normalizeDate(msg.date);
+      matchesDate = msgDate === selectedDate;
+    }
+    return matchesSearch && matchesDate;
+  });
+  renderChat(filtered);
+}
+
+/* ======== 日历弹窗 ======= */
+function renderCalendar(year, month, dateSet, curSelected, onSelect) {
+  const cal = [];
+  const firstDay = new Date(year, month-1, 1);
+  const firstW = firstDay.getDay();
+  const lastDate = new Date(year, month, 0).getDate();
+  let cur = 1, started = false;
+  for(let w=0;w<6;w++){
+    let week = [];
+    for(let d=0;d<7;d++){
+      if (!started && d===firstW) started=true;
+      if (started && cur<=lastDate) {
+        const dstr = `${year}-${String(month).padStart(2,'0')}-${String(cur).padStart(2,'0')}`;
+        week.push({day:cur, full:dstr, hasMsg: dateSet.has(dstr), selected: curSelected===dstr});
+        cur++;
+      } else {
+        week.push(null);
+      }
+    }
+    cal.push(week);
+    if(cur>lastDate) break;
+  }
+  let head = `<table class="calendar-table mb-2"><thead><tr>
+    <th>日</th><th>一</th><th>二</th><th>三</th><th>四</th><th>五</th><th>六</th>
+  </tr></thead><tbody>`;
+  let body = '';
+  for(let row of cal){
+    body += `<tr>`;
+    for(let cell of row){
+      if(cell){
+        let cls = 'calendar-day';
+        if(cell.hasMsg) cls += ' has-msg';
+        if(cell.selected) cls += ' selected';
+        body += `<td><div class="${cls}" data-fulldate="${cell.full}">${cell.day}</div></td>`;
+      }else{
+        body += `<td></td>`;
+      }
+    }
+    body += '</tr>';
+  }
+  body += '</tbody></table>';
+  return head+body;
+}
+let calYear, calMonth;
+const modal = document.getElementById('calendarModal');
+const calendarArea = document.getElementById('calendarArea');
+const btn = document.getElementById('openCalendar');
+const closeBtn = document.querySelector('.calendar-close');
+
+btn.onclick = function() {
+  if(!minDate || !maxDate){alert('请先导入聊天记录');return;}
+  const [y,m] = minDate.split('-');
+  calYear = parseInt(y); calMonth = parseInt(m);
+  showCalendar();
+  modal.classList.add('show');
+}
+closeBtn.onclick = function() { modal.classList.remove('show'); }
+window.onclick = function(event) {
+  if (event.target == modal) modal.classList.remove('show');
+  if (event.target == imagesModal) imagesModal.classList.remove('show');
+  if (event.target == bigimgModal) bigimgModal.classList.remove('show');
+}
+function showCalendar() {
+  calendarArea.innerHTML = `
+  <div class="calendar-nav-wrapper mb-3">
+    <button id="prevMonth" class="cal-btn-big absolute left-4" title="上个月">‹</button>
+    <span class="calendar-month-display">${calYear}年${calMonth}月</span>
+    <button id="nextMonth" class="cal-btn-big absolute right-4" title="下个月">›</button>
+  </div>
+  ${renderCalendar(calYear, calMonth, chatDateSet, selectedDate, null)}
+`;
+  document.getElementById('prevMonth').onclick = () => {
+    calMonth -= 1; if(calMonth<1){calMonth=12; calYear--;} showCalendar();
+  };
+  document.getElementById('nextMonth').onclick = () => {
+    calMonth += 1; if(calMonth>12){calMonth=1; calYear++;} showCalendar();
+  };
+  Array.from(calendarArea.querySelectorAll('.calendar-day')).forEach(el=>{
+    if(!el.classList.contains('has-msg')) return;
+    el.onclick = ()=>{
+      selectedDate = el.dataset.fulldate;
+      modal.classList.remove('show');
+      scrollToDate(selectedDate);
+    }
+  });
+}
+
+/* ===== 图片弹窗相关 ===== */
+const imagesModal = document.getElementById('imagesModal');
+const openImagesBtn = document.getElementById('openImages');
+openImagesBtn.onclick = async function() {
+  if (!parsedLines.length) {
+    alert('请先导入聊天记录！');
+    return;
+  }
+  await renderAllImagesPanel();
+  imagesModal.classList.add('show');
+};
+imagesModal.querySelector('.close-btn').onclick = () => imagesModal.classList.remove('show');
+
+/* 大图弹窗绑定 */
+const bigimgModal = document.getElementById('bigimgModal');
+const gotoBtn = bigimgModal.querySelector('.goto-btn');
+bigimgModal.querySelector('.close-btn').onclick = () => bigimgModal.classList.remove('show');
+document.getElementById('bigimgPreview').onclick = () => bigimgModal.classList.remove('show');
+gotoBtn.onclick = function(){
+  if (lastBigImgIdx != null && allImages[lastBigImgIdx]) {
+    bigimgModal.classList.remove('show');
+    setTimeout(() => {
+      scrollToMsgAndHighlight(allImages[lastBigImgIdx].msgIndex);
+    }, 210);
+  }
+};
+
+/* 缩略图点击 */
+document.getElementById('imagesGrid').onclick = function(e){
+  let t = e.target;
+  if (t.classList.contains('img-thumb')) {
+    let idx = t.getAttribute('data-idx');
+    showBigImgModal(idx);
+  }
+}
+</script>
+</body>
+</html>
