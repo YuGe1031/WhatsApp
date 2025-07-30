@@ -644,20 +644,19 @@ function removeInvisible(str) {
 }
 function parseMessageLine(line) {
   line = removeInvisible(line);
-  const reg = /^\[?(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(上午|下午)?(\d{1,2}):(\d{2}):(\d{2})\]?\s*(.*?):\s*([\s\S]*)$/;
+
+  // 匹配 [2025/7/30 16:40:00] 名字: 内容
+  const reg = /^\[(\d{4})\/(\d{1,2})\/(\d{1,2}) (\d{1,2}):(\d{2}):(\d{2})\]\s*([^:]+):\s*([\s\S]*)$/;
   const m = line.match(reg);
   if (!m) return null;
-  let hour = parseInt(m[3], 10);
-  if (m[2] === '下午' && hour < 12) hour += 12;
-  if (m[2] === '上午' && hour === 12) hour = 0;
-  let hourStr = hour < 10 ? '0' + hour : '' + hour;
-  let time = `${hourStr}:${m[4]}:${m[5]}`;
-  return {
-    date: m[1],
-    time: time,
-    author: removeInvisible(m[6]),
-    text: removeInvisible(m[7])
-  };
+  // 组装date、time
+  let year = m[1], month = m[2], day = m[3];
+  let date = `${day}/${month}/${year}`; // 你的代码是日/月/年格式
+  let hour = m[4], min = m[5], sec = m[6];
+  let time = `${hour.padStart(2, '0')}:${min}:${sec}`;
+  let author = removeInvisible(m[7]);
+  let text = removeInvisible(m[8]);
+  return { date, time, author, text };
 }
 function escapeHtml(str) {
   if (!str) return '';
